@@ -6,5 +6,11 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Garden Management needs access to your camera to take photos of your plants.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Garden Management needs permission to save plant photos to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Garden Management needs access to your photo library to attach photos to your plants.</string>
 </dict>
 </plist>
