@@ -54,8 +54,8 @@ struct PlantDetailView: View {
                         DetailRow(label: "Location", value: plant.locationDescription)
                         
                         DetailRow(
-                            label: "Planted",
-                            value: plant.plantedDate.formatted(date: .long, time: .omitted)
+                            label: "Entered",
+                            value: plant.enteredDate.formatted(date: .long, time: .omitted)
                         )
                         
                         if let notes = plant.notes {
@@ -222,8 +222,8 @@ struct EditPlantView: View {
     }
     
     var availablePositions: [Int] {
-        guard let bed = selectedBed, let row = selectedRow else { return [] }
-        let allPositions = Array(1...row.positionCount)
+        guard let bed = selectedBed else { return [] }
+        let allPositions = Array(1...bed.positionCount)
         
         // Get occupied positions in this row (excluding current plant)
         let occupiedPositions = bed.plants
@@ -249,16 +249,16 @@ struct EditPlantView: View {
                 }
                 
                 Section {
-                    Toggle("Has Primary Color", isOn: $hasPrimaryColor)
+                    Toggle("Primary Color", isOn: $hasPrimaryColor)
                     
                     if hasPrimaryColor {
-                        ColorPicker("Primary Color", selection: $primaryColor, supportsOpacity: false)
-                    }
-                    
-                    Toggle("Has Secondary Color", isOn: $hasSecondaryColor)
-                    
-                    if hasSecondaryColor {
-                        ColorPicker("Secondary Color", selection: $secondaryColor, supportsOpacity: false)
+                        ColorPicker("Color", selection: $primaryColor, supportsOpacity: false)
+                        
+                        Toggle("Secondary Color", isOn: $hasSecondaryColor)
+                        
+                        if hasSecondaryColor {
+                            ColorPicker("Color", selection: $secondaryColor, supportsOpacity: false)
+                        }
                     }
                 } header: {
                     Text("Colors")

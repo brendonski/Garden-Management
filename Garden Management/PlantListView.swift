@@ -8,12 +8,20 @@
 import SwiftUI
 import SwiftData
 
+enum PlantSortOption: String, CaseIterable, Identifiable {
+    case name = "Name"
+    case position = "Position"
+    
+    var id: String { rawValue }
+}
+
 struct PlantListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Plant.name) private var plants: [Plant]
+    @Query private var plants: [Plant]
     @State private var showingAddPlant = false
     @State private var searchText = ""
     @State private var selectedBedFilter: Bed?
+    @AppStorage("plantSortOption") private var sortOption: PlantSortOption = .name
     
     var filteredPlants: [Plant] {
         var result = plants
@@ -27,6 +35,29 @@ struct PlantListView: View {
         
         if let selectedBed = selectedBedFilter {
             result = result.filter { $0.bed?.persistentModelID == selectedBed.persistentModelID }
+        }
+        
+        // Apply sorting
+        switch sortOption {
+        case .name:
+            result.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        case .position:
+            result.sort { plant1, plant2 in
+                // First compare bed names
+                let bed1 = plant1.bed?.name ?? ""
+                let bed2 = plant2.bed?.name ?? ""
+                if bed1 != bed2 {
+                    return bed1.localizedStandardCompare(bed2) == .orderedAscending
+                }
+                
+                // Then compare row identifiers
+                if plant1.rowIdentifier != plant2.rowIdentifier {
+                    return plant1.rowIdentifier.localizedStandardCompare(plant2.rowIdentifier) == .orderedAscending
+                }
+                
+                // Finally compare positions
+                return plant1.position < plant2.position
+            }
         }
         
         return result
@@ -55,9 +86,21 @@ struct PlantListView: View {
                     EditButton()
                 }
 #endif
-                ToolbarItem {
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: { showingAddPlant = true }) {
                         Label("Add Plant", systemImage: "plus")
+                    }
+                }
+                ToolbarItem {
+                    Menu {
+                        Picker("Sort by", selection: $sortOption) {
+                            ForEach(PlantSortOption.allCases, id: \.self) { option in
+                                Text(option.rawValue).tag(option)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Label("Sort", systemImage: "arrow.up.arrow.down")
                     }
                 }
             }
@@ -98,6 +141,16 @@ struct PlantRowView: View {
                     .scaledToFill()
                     .frame(width: 60, height: 60)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else if let primaryColorHex = plant.primaryColor, let primaryColor = Color(hex: primaryColorHex) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(primaryColor)
+                    .frame(width: 60, height: 60)
+                    .overlay {
+                        Image(systemName: "leaf")
+                            .foregroundStyle(.white)
+                            .font(.title2)
+                            .shadow(radius: 1)
+                    }
             } else {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.secondary.opacity(0.2))
@@ -112,22 +165,6 @@ struct PlantRowView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(plant.name)
                     .font(.headline)
-                
-                if let primaryColor = plant.primaryColor {
-                    HStack(spacing: 4) {
-                        Text(primaryColor)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        
-                        if let secondaryColor = plant.secondaryColor {
-                            Text("•")
-                                .foregroundStyle(.secondary)
-                            Text(secondaryColor)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
                 
                 Text(plant.locationDescription)
                     .font(.caption)

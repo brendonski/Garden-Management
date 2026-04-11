@@ -41,8 +41,8 @@ struct AddPlantView: View {
     }
     
     var availablePositions: [Int] {
-        guard let bed = selectedBed, let row = selectedRow else { return [] }
-        let allPositions = Array(1...row.positionCount)
+        guard let bed = selectedBed else { return [] }
+        let allPositions = Array(1...bed.positionCount)
         
         // Get occupied positions in this row
         let occupiedPositions = bed.plants
@@ -78,13 +78,13 @@ struct AddPlantView: View {
                     Toggle("Add Primary Color", isOn: $hasPrimaryColor)
                     
                     if hasPrimaryColor {
-                        ColorPicker("Primary Color", selection: $primaryColor, supportsOpacity: false)
-                    }
-                    
-                    Toggle("Add Secondary Color", isOn: $hasSecondaryColor)
-                    
-                    if hasSecondaryColor {
-                        ColorPicker("Secondary Color", selection: $secondaryColor, supportsOpacity: false)
+                        ColorPicker("Color", selection: $primaryColor, supportsOpacity: false)
+                        
+                        Toggle("Add Secondary Color", isOn: $hasSecondaryColor)
+                        
+                        if hasSecondaryColor {
+                            ColorPicker("Color", selection: $secondaryColor, supportsOpacity: false)
+                        }
                     }
                 } header: {
                     Text("Colors")
@@ -325,8 +325,8 @@ extension Color {
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     
-    let bed = Bed(name: "Bed 1")
-    let rowA = BedRow(identifier: "A", positionCount: 10, bed: bed)
+    let bed = Bed(name: "Bed 1", positionCount: 10)
+    let rowA = BedRow(identifier: "A", bed: bed)
     bed.rows = [rowA]
     container.mainContext.insert(bed)
     

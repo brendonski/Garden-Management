@@ -13,18 +13,15 @@ struct BedGridView: View {
     @Bindable var bed: Bed
     @State private var selectedPositionForAdd: PositionInfo?
     @State private var selectedPositionForEdit: PositionInfo?
+    @State private var draggedPlant: Plant?
     @AppStorage("bedGridSortOrder") private var sortAscending = true
     
     var sortedRows: [BedRow] {
         bed.rows.sorted { $0.identifier < $1.identifier }
     }
     
-    var maxPositions: Int {
-        sortedRows.map { $0.positionCount }.max() ?? 0
-    }
-    
     var positionRange: [Int] {
-        let range = Array(1...maxPositions)
+        let range = Array(1...bed.positionCount)
         return sortAscending ? range : range.reversed()
     }
     
@@ -66,21 +63,17 @@ struct BedGridView: View {
                                     .frame(width: 50, alignment: .trailing)
                                 
                                 ForEach(sortedRows) { row in
-                                    if position <= row.positionCount {
-                                        PositionCell(
-                                            bed: bed,
-                                            row: row,
-                                            position: position,
-                                            plant: getPlant(row: row.identifier, position: position),
-                                            cellWidth: cellWidth
-                                        ) {
-                                            handlePositionTap(row: row, position: position)
-                                        }
-                                    } else {
-                                        // Empty placeholder for rows with fewer positions
-                                        Rectangle()
-                                            .fill(Color.clear)
-                                            .frame(width: cellWidth, height: cellWidth)
+                                    PositionCell(
+                                        bed: bed,
+                                        row: row,
+                                        position: position,
+                                        plant: getPlant(row: row.identifier, position: position),
+                                        cellWidth: cellWidth,
+                                        draggedPlant: $draggedPlant
+                                    ) {
+                                        handlePositionTap(row: row, position: position)
+                                    } onMove: { plant, toRow, toPosition in
+                                        movePlant(plant: plant, toRow: toRow, toPosition: toPosition)
                                     }
                                 }
                             }
@@ -88,10 +81,11 @@ struct BedGridView: View {
                         }
                     }
                 }
+                .frame(minWidth: geometry.size.width)
                 .padding(.vertical)
             }
         }
-        .navigationTitle("\(bed.name) - Grid View")
+        .navigationTitle("\(bed.displayName) - Grid View")
 #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
 #endif
@@ -167,6 +161,13 @@ struct BedGridView: View {
             )
         }
     }
+    
+    private func movePlant(plant: Plant, toRow: String, toPosition: Int) {
+        withAnimation {
+            plant.rowIdentifier = toRow
+            plant.position = toPosition
+        }
+    }
 }
 
 struct PositionInfo: Identifiable {
@@ -182,7 +183,9 @@ struct PositionCell: View {
     let position: Int
     let plant: Plant?
     let cellWidth: CGFloat
+    @Binding var draggedPlant: Plant?
     let onTap: () -> Void
+    let onMove: (Plant, String, Int) -> Void
     
     var body: some View {
         Button(action: onTap) {
@@ -196,10 +199,10 @@ struct PositionCell: View {
                             .scaledToFill()
                             .frame(width: cellWidth, height: cellWidth)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
-                    } else if let primaryColor = plant.primaryColor {
+                    } else if let primaryColorHex = plant.primaryColor, let primaryColor = Color(hex: primaryColorHex) {
                         // Show color swatch
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(colorFromString(primaryColor))
+                            .fill(primaryColor)
                             .frame(width: cellWidth, height: cellWidth)
                             .overlay {
                                 VStack {
@@ -246,44 +249,49 @@ struct PositionCell: View {
                             }
                         }
                     
-                    Text("Pos \(position)")
+                    // Placeholder text to match populated cell height
+                    Text(" ")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                         .frame(width: cellWidth)
                 }
             }
         }
         .buttonStyle(.plain)
-    }
-    
-    private func colorFromString(_ colorName: String) -> Color {
-        let lowercased = colorName.lowercased()
-        
-        switch lowercased {
-        case let str where str.contains("red"):
-            return .red
-        case let str where str.contains("pink"):
-            return .pink
-        case let str where str.contains("orange"):
-            return .orange
-        case let str where str.contains("yellow"):
-            return .yellow
-        case let str where str.contains("green"):
-            return .green
-        case let str where str.contains("blue"):
-            return .blue
-        case let str where str.contains("purple") || str.contains("violet"):
-            return .purple
-        case let str where str.contains("white"):
-            return .white
-        case let str where str.contains("black"):
-            return .black
-        case let str where str.contains("brown"):
-            return .brown
-        case let str where str.contains("gray") || str.contains("grey"):
-            return .gray
-        default:
-            return .green
+        .opacity(draggedPlant?.persistentModelID == plant?.persistentModelID ? 0.5 : 1.0)
+        .onDrag {
+            if let plant = plant {
+                draggedPlant = plant
+                let draggedPlantID = plant.persistentModelID
+                // Fallback timeout: only reset if drag state is still set for this plant
+                // This handles edge cases like dragging outside the window
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                    // Only reset if still showing the same plant as dragged
+                    // If drag completed normally, draggedPlant will already be nil
+                    if draggedPlant?.persistentModelID == draggedPlantID {
+                        draggedPlant = nil
+                    }
+                }
+                return NSItemProvider(object: plant.name as NSString)
+            }
+            return NSItemProvider()
+        }
+        .dropDestination(for: String.self) { items, location in
+            guard let currentDraggedPlant = draggedPlant,
+                  plant == nil, // Only drop on empty positions
+                  !items.isEmpty else {
+                // Reset immediately on invalid drop
+                draggedPlant = nil
+                return false
+            }
+            
+            // Reset drag state BEFORE moving to prevent flash
+            draggedPlant = nil
+            
+            // Move the plant
+            onMove(currentDraggedPlant, row.identifier, position)
+            
+            return true
         }
     }
 }
@@ -294,9 +302,9 @@ struct PositionCell: View {
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     
-    let bed = Bed(name: "Bed 1")
-    let rowA = BedRow(identifier: "A", positionCount: 10, bed: bed)
-    let rowB = BedRow(identifier: "B", positionCount: 8, bed: bed)
+    let bed = Bed(name: "Bed 1", positionCount: 10)
+    let rowA = BedRow(identifier: "A", bed: bed)
+    let rowB = BedRow(identifier: "B", bed: bed)
     bed.rows = [rowA, rowB]
     
     let plant1 = Plant(name: "Dahlia 'Winkie Chevron'", primaryColor: "Pink", rowIdentifier: "A", position: 3, bed: bed)

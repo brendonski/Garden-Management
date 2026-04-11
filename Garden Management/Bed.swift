@@ -11,6 +11,7 @@ import SwiftData
 @Model
 final class Bed {
     var name: String
+    var positionCount: Int
     var createdAt: Date
     
     @Relationship(deleteRule: .cascade, inverse: \BedRow.bed)
@@ -19,21 +20,28 @@ final class Bed {
     @Relationship(deleteRule: .cascade)
     var plants: [Plant] = []
     
-    init(name: String, createdAt: Date = Date()) {
+    init(name: String, positionCount: Int = 10, createdAt: Date = Date()) {
         self.name = name
+        self.positionCount = positionCount
         self.createdAt = createdAt
+    }
+    
+    var displayName: String {
+        if name.lowercased().hasPrefix("bed") {
+            return name
+        } else {
+            return "Bed \(name)"
+        }
     }
 }
 
 @Model
 final class BedRow {
     var identifier: String // e.g., "A", "B", "C"
-    var positionCount: Int
     var bed: Bed?
     
-    init(identifier: String, positionCount: Int, bed: Bed? = nil) {
+    init(identifier: String, bed: Bed? = nil) {
         self.identifier = identifier
-        self.positionCount = positionCount
         self.bed = bed
     }
 }

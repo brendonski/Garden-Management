@@ -22,11 +22,18 @@ struct BedListView: View {
                         BedDetailView(bed: bed)
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(bed.name)
+                            Text(bed.displayName)
                                 .font(.headline)
-                            Text("\(bed.rows.count) rows")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                Text("\(bed.rows.count) \(bed.rows.count == 1 ? "row" : "rows")")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("•")
+                                    .foregroundStyle(.secondary)
+                                Text("\(bed.plants.count) \(bed.plants.count == 1 ? "plant" : "plants")")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         .padding(.vertical, 4)
                     }
@@ -38,11 +45,6 @@ struct BedListView: View {
 #endif
             .navigationTitle("Garden Beds")
             .toolbar {
-#if os(iOS)
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-#endif
                 ToolbarItem {
                     Button(action: { showingAddBed = true }) {
                         Label("Add Bed", systemImage: "plus")
@@ -51,6 +53,15 @@ struct BedListView: View {
             }
             .sheet(isPresented: $showingAddBed) {
                 AddBedSheet(isPresented: $showingAddBed)
+            }
+            .overlay {
+                if beds.isEmpty {
+                    ContentUnavailableView(
+                        "No Beds Yet",
+                        systemImage: "square.grid.3x3",
+                        description: Text("Add your first bed to get started")
+                    )
+                }
             }
         }
     }
@@ -87,6 +98,7 @@ struct AddBedSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Binding var isPresented: Bool
     @State private var bedName = ""
+    @State private var positionCount = ""
     
     var body: some View {
         NavigationStack {
@@ -96,8 +108,15 @@ struct AddBedSheet: View {
 #if os(iOS)
                         .textInputAutocapitalization(.words)
 #endif
+                    
+                    TextField("Number of positions per row", text: $positionCount)
+#if os(iOS)
+                        .keyboardType(.numberPad)
+#endif
                 } header: {
                     Text("Bed Details")
+                } footer: {
+                    Text("Number of positions in each row of this bed")
                 }
             }
             .navigationTitle("Add Bed")
@@ -114,18 +133,26 @@ struct AddBedSheet: View {
                     Button("Add") {
                         addBed()
                     }
-                    .disabled(bedName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(!isValid)
                 }
             }
         }
 #if os(macOS)
-        .frame(minWidth: 400, minHeight: 200)
+        .frame(minWidth: 400, minHeight: 250)
 #endif
     }
     
+    private var isValid: Bool {
+        !bedName.trimmingCharacters(in: .whitespaces).isEmpty &&
+        Int(positionCount) != nil &&
+        Int(positionCount)! > 0
+    }
+    
     private func addBed() {
+        guard let count = Int(positionCount) else { return }
+        
         withAnimation {
-            let bed = Bed(name: bedName.trimmingCharacters(in: .whitespaces))
+            let bed = Bed(name: bedName.trimmingCharacters(in: .whitespaces), positionCount: count)
             modelContext.insert(bed)
             isPresented = false
         }

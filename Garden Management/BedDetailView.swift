@@ -64,6 +64,8 @@ struct BedDetailView: View {
                     }
                 }
                 
+                BedPositionCountRow(bed: bed)
+                
                 NavigationLink {
                     BedGridView(bed: bed)
                 } label: {
@@ -124,15 +126,21 @@ struct BedDetailView: View {
                         Label("Add Plant", systemImage: "plus.circle.fill")
                             .labelStyle(.iconOnly)
                     }
+                    .disabled(bed.rows.isEmpty)
+                }
+            } footer: {
+                if bed.rows.isEmpty {
+                    Text("Add at least one row before adding plants")
+                        .font(.caption)
                 }
             }
         }
-        .navigationTitle(bed.name)
+        .navigationTitle(bed.displayName)
         .sheet(isPresented: $showingAddRow) {
             AddRowSheet(bed: bed, isPresented: $showingAddRow)
         }
         .sheet(isPresented: $showingAddPlant) {
-            AddPlantView(isPresented: $showingAddPlant)
+            AddPlantView(isPresented: $showingAddPlant, prefilledBed: bed)
         }
         .alert("Cannot Delete Row", isPresented: $showingDeleteAlert) {
             Button("OK", role: .cancel) { }
@@ -176,66 +184,71 @@ struct BedDetailView: View {
     }
 }
 
-struct RowItemView: View {
-    @Bindable var row: BedRow
-    var onDelete: () -> Void
+struct BedPositionCountRow: View {
+    @Bindable var bed: Bed
     @State private var isEditingPositionCount = false
     @State private var positionCountText = ""
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Row \(row.identifier)")
-                    .font(.headline)
-                Spacer()
-#if os(iOS)
-                Button(role: .destructive, action: onDelete) {
-                    Label("Delete", systemImage: "trash")
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(.red)
-                }
-                .buttonStyle(.borderless)
-#endif
-            }
+        HStack {
+            Text("Number of positions per Row")
+                .foregroundStyle(.secondary)
             
-            HStack {
-                Text("Positions:")
-                    .foregroundStyle(.secondary)
-                
-                if isEditingPositionCount {
-                    TextField("Count", text: $positionCountText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 60)
+            if isEditingPositionCount {
+                TextField("Count", text: $positionCountText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
 #if os(iOS)
-                        .keyboardType(.numberPad)
+                    .keyboardType(.numberPad)
 #endif
-                    
-                    Button("Save") {
-                        if let count = Int(positionCountText), count > 0 {
-                            row.positionCount = count
-                            isEditingPositionCount = false
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    
-                    Button("Cancel") {
+                
+                Button("Save") {
+                    if let count = Int(positionCountText), count > 0 {
+                        bed.positionCount = count
                         isEditingPositionCount = false
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                } else {
-                    Text("\(row.positionCount)")
-                        .fontWeight(.medium)
-                    
-                    Button("Edit") {
-                        positionCountText = "\(row.positionCount)"
-                        isEditingPositionCount = true
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                
+                Button("Cancel") {
+                    isEditingPositionCount = false
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else {
+                Spacer()
+                Text("\(bed.positionCount)")
+                    .fontWeight(.medium)
+                
+                Button("Edit") {
+                    positionCountText = "\(bed.positionCount)"
+                    isEditingPositionCount = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
+        }
+    }
+}
+
+struct RowItemView: View {
+    @Bindable var row: BedRow
+    var onDelete: () -> Void
+    
+    var body: some View {
+        HStack {
+            Text("Row \(row.identifier)")
+                .font(.headline)
+            Spacer()
+#if os(iOS)
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.borderless)
+#endif
         }
         .padding(.vertical, 4)
     }
@@ -246,7 +259,6 @@ struct AddRowSheet: View {
     var bed: Bed
     @Binding var isPresented: Bool
     @State private var rowIdentifier = ""
-    @State private var positionCount = "10"
     
     var body: some View {
         NavigationStack {
@@ -256,15 +268,10 @@ struct AddRowSheet: View {
 #if os(iOS)
                         .textInputAutocapitalization(.characters)
 #endif
-                    
-                    TextField("Number of Positions", text: $positionCount)
-#if os(iOS)
-                        .keyboardType(.numberPad)
-#endif
                 } header: {
                     Text("Row Details")
                 } footer: {
-                    Text("Row identifier (e.g., A, B, C) and number of positions in this row")
+                    Text("Row identifier (e.g., A, B, C)")
                 }
             }
             .navigationTitle("Add Row")
@@ -286,23 +293,18 @@ struct AddRowSheet: View {
             }
         }
 #if os(macOS)
-        .frame(minWidth: 400, minHeight: 250)
+        .frame(minWidth: 400, minHeight: 200)
 #endif
     }
     
     private var isValid: Bool {
-        !rowIdentifier.trimmingCharacters(in: .whitespaces).isEmpty &&
-        Int(positionCount) != nil &&
-        Int(positionCount)! > 0
+        !rowIdentifier.trimmingCharacters(in: .whitespaces).isEmpty
     }
     
     private func addRow() {
-        guard let count = Int(positionCount) else { return }
-        
         withAnimation {
             let row = BedRow(
                 identifier: rowIdentifier.trimmingCharacters(in: .whitespaces).uppercased(),
-                positionCount: count,
                 bed: bed
             )
             modelContext.insert(row)
@@ -323,6 +325,15 @@ struct PlantInBedRowView: View {
                     .scaledToFill()
                     .frame(width: 50, height: 50)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else if let primaryColorHex = plant.primaryColor, let primaryColor = Color(hex: primaryColorHex) {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(primaryColor)
+                    .frame(width: 50, height: 50)
+                    .overlay {
+                        Image(systemName: "leaf")
+                            .foregroundStyle(.white)
+                            .shadow(radius: 1)
+                    }
             } else {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.secondary.opacity(0.2))
@@ -340,12 +351,6 @@ struct PlantInBedRowView: View {
                 Text("Row \(plant.rowIdentifier), Position \(plant.position)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                
-                if let primaryColor = plant.primaryColor {
-                    Text(primaryColor)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
         }
         .padding(.vertical, 2)
@@ -354,9 +359,9 @@ struct PlantInBedRowView: View {
 
 #Preview("Bed Detail") {
     let container = try! ModelContainer(for: Bed.self, BedRow.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
-    let bed = Bed(name: "Bed 1")
-    let rowA = BedRow(identifier: "A", positionCount: 10, bed: bed)
-    let rowB = BedRow(identifier: "B", positionCount: 8, bed: bed)
+    let bed = Bed(name: "Bed 1", positionCount: 10)
+    let rowA = BedRow(identifier: "A", bed: bed)
+    let rowB = BedRow(identifier: "B", bed: bed)
     bed.rows = [rowA, rowB]
     container.mainContext.insert(bed)
     

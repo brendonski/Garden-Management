@@ -15,7 +15,7 @@ final class Plant {
     var secondaryColor: String?
     var rowIdentifier: String
     var position: Int
-    var plantedDate: Date
+    var enteredDate: Date
     var notes: String?
     
     var bed: Bed?
@@ -25,20 +25,20 @@ final class Plant {
     
     init(name: String, primaryColor: String? = nil, secondaryColor: String? = nil, 
          rowIdentifier: String, position: Int, bed: Bed? = nil, 
-         plantedDate: Date = Date(), notes: String? = nil) {
+         enteredDate: Date = Date(), notes: String? = nil) {
         self.name = name
         self.primaryColor = primaryColor
         self.secondaryColor = secondaryColor
         self.rowIdentifier = rowIdentifier
         self.position = position
         self.bed = bed
-        self.plantedDate = plantedDate
+        self.enteredDate = enteredDate
         self.notes = notes
     }
     
     var locationDescription: String {
-        if let bedName = bed?.name {
-            return "Bed \(bedName), Row \(rowIdentifier), Position \(position)"
+        if let bed = bed {
+            return "\(bed.displayName), Row \(rowIdentifier), Position \(position)"
         }
         return "Row \(rowIdentifier), Position \(position)"
     }
