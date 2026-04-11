@@ -75,22 +75,6 @@ struct AddPlantView: View {
                 }
                 
                 Section {
-                    Toggle("Add Primary Color", isOn: $hasPrimaryColor)
-                    
-                    if hasPrimaryColor {
-                        ColorPicker("Color", selection: $primaryColor, supportsOpacity: false)
-                        
-                        Toggle("Add Secondary Color", isOn: $hasSecondaryColor)
-                        
-                        if hasSecondaryColor {
-                            ColorPicker("Color", selection: $secondaryColor, supportsOpacity: false)
-                        }
-                    }
-                } header: {
-                    Text("Colors")
-                }
-                
-                Section {
                     Picker("Bed", selection: $selectedBed) {
                         Text("Select a bed").tag(nil as Bed?)
                         ForEach(beds) { bed in
@@ -163,6 +147,22 @@ struct AddPlantView: View {
                     }
                 } header: {
                     Text("Photos")
+                }
+                
+                Section {
+                    Toggle("Add Primary Color", isOn: $hasPrimaryColor)
+                    
+                    if hasPrimaryColor {
+                        ColorPicker("Color", selection: $primaryColor, supportsOpacity: false)
+                        
+                        Toggle("Add Secondary Color", isOn: $hasSecondaryColor)
+                        
+                        if hasSecondaryColor {
+                            ColorPicker("Color", selection: $secondaryColor, supportsOpacity: false)
+                        }
+                    }
+                } header: {
+                    Text("Colors")
                 }
                 
                 Section {
