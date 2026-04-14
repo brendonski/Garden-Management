@@ -8,7 +8,7 @@
 import SwiftUI
 import Photos
 
-struct CapturedPhoto {
+struct CapturedPhoto: Equatable {
     let imageData: Data
     let assetIdentifier: String?
 }

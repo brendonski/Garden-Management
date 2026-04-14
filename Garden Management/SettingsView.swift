@@ -16,7 +16,7 @@ struct SettingsView: View {
     @State private var showImporter = false
     @State private var showImportConfirmation = false
     @State private var importMode: BackupManager.ImportMode = .merge
-    @State private var pendingImportURL: URL?
+    @State private var pendingImportData: Data?
     
     @State private var exportData: Data?
     @State private var alertMessage: AlertMessage?
@@ -107,17 +107,17 @@ struct SettingsView: View {
         }
         .alert("Import Mode", isPresented: $showImportConfirmation) {
             Button("Replace All Data", role: .destructive) {
-                if let url = pendingImportURL {
-                    importBackup(from: url, mode: .replace)
+                if let data = pendingImportData {
+                    importBackup(data: data, mode: .replace)
                 }
             }
             Button("Merge with Existing") {
-                if let url = pendingImportURL {
-                    importBackup(from: url, mode: .merge)
+                if let data = pendingImportData {
+                    importBackup(data: data, mode: .merge)
                 }
             }
             Button("Cancel", role: .cancel) {
-                pendingImportURL = nil
+                pendingImportData = nil
             }
         } message: {
             Text("Choose how to import:\n\n• Replace: Delete all existing data first\n• Merge: Keep existing data and add imported data")
@@ -182,7 +182,7 @@ struct SettingsView: View {
         case .success(let urls):
             guard let url = urls.first else { return }
             
-            // Validate the file first
+            // Access the security-scoped resource and read data immediately
             guard url.startAccessingSecurityScopedResource() else {
                 alertMessage = AlertMessage(
                     title: "Access Denied",
@@ -193,7 +193,10 @@ struct SettingsView: View {
             defer { url.stopAccessingSecurityScopedResource() }
             
             do {
+                // Read the data while we have access
                 let data = try Data(contentsOf: url)
+                
+                // Validate the backup data
                 guard BackupManager.validateBackupData(data) else {
                     alertMessage = AlertMessage(
                         title: "Invalid Backup",
@@ -202,8 +205,8 @@ struct SettingsView: View {
                     return
                 }
                 
-                // Show confirmation dialog
-                pendingImportURL = url
+                // Store the data (not the URL) for later import
+                pendingImportData = data
                 showImportConfirmation = true
                 
             } catch {
@@ -221,21 +224,11 @@ struct SettingsView: View {
         }
     }
     
-    private func importBackup(from url: URL, mode: BackupManager.ImportMode) {
-        guard url.startAccessingSecurityScopedResource() else {
-            alertMessage = AlertMessage(
-                title: "Access Denied",
-                message: "Could not access the selected file"
-            )
-            return
-        }
-        defer { url.stopAccessingSecurityScopedResource() }
-        
+    private func importBackup(data: Data, mode: BackupManager.ImportMode) {
         isImporting = true
         
         Task {
             do {
-                let data = try Data(contentsOf: url)
                 try await BackupManager.importData(data, into: modelContext, mode: mode)
                 
                 let modeText = mode == .replace ? "replaced" : "merged"
@@ -257,7 +250,7 @@ struct SettingsView: View {
             }
             
             await MainActor.run {
-                pendingImportURL = nil
+                pendingImportData = nil
             }
         }
     }

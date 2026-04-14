@@ -169,7 +169,10 @@ class BackupManager {
                     }
                     
                     // Only create photo if we have actual image data
-                    guard !imageData.isEmpty else { continue }
+                    guard !imageData.isEmpty else {
+                        print("Warning: Skipping photo with no data or invalid asset identifier")
+                        continue
+                    }
                     
                     let photo = PlantPhoto(
                         imageData: imageData,

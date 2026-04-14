@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import Photos
 
 struct PlantDetailView: View {
     @Environment(\.modelContext) private var modelContext
@@ -168,7 +169,16 @@ struct EditPlantView: View {
     @State private var position: Int?
     @State private var notes: String
     @State private var selectedPhotos: [PhotosPickerItem] = []
-    @State private var photoDataItems: [Data]
+    @State private var photoItems: [PhotoItem] = []  // Changed from photoDataItems
+    @State private var showingCamera = false
+    @State private var capturedPhotos: [CapturedPhoto] = []
+    
+    // Helper struct to track photo data and asset identifier
+    struct PhotoItem: Identifiable {
+        let id = UUID()
+        let imageData: Data
+        let assetIdentifier: String?
+    }
     
     init(plant: Plant, isPresented: Binding<Bool>) {
         self.plant = plant
@@ -195,7 +205,9 @@ struct EditPlantView: View {
         self._rowIdentifier = State(initialValue: plant.rowIdentifier)
         self._position = State(initialValue: plant.position)
         self._notes = State(initialValue: plant.notes ?? "")
-        self._photoDataItems = State(initialValue: plant.photos.map { $0.imageData })
+        self._photoItems = State(initialValue: plant.photos.map { 
+            PhotoItem(imageData: $0.imageData, assetIdentifier: $0.assetIdentifier)
+        })
     }
     
     private var availableRows: [BedRow] {
@@ -213,37 +225,73 @@ struct EditPlantView: View {
     
     var body: some View {
         NavigationStack {
-            Form {
-                nameSection
-                locationSection
-                photoSection
-                colorSection
-                notesSection
-            }
-            .navigationTitle("Edit Plant")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { isPresented = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { savePlant() }
-                        .disabled(plantName.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-            .onChange(of: selectedPhotos) { _, newValue in
-                Task {
-                    for item in newValue {
-                        if let data = try? await item.loadTransferable(type: Data.self) {
-                            photoDataItems.append(data)
-                        }
+            formContent
+                .navigationTitle("Edit Plant")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { isPresented = false }
                     }
-                    selectedPhotos = []
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") { savePlant() }
+                            .disabled(plantName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
                 }
+                .onChange(of: selectedPhotos) { _, newValue in
+                    handleSelectedPhotos(newValue)
+                }
+                .onChange(of: capturedPhotos) { _, newValue in
+                    handleCapturedPhotos(newValue)
+                }
+                #if os(iOS)
+                .fullScreenCover(isPresented: $showingCamera) {
+                    CameraView(isPresented: $showingCamera, capturedPhotos: $capturedPhotos)
+                }
+                #endif
+        }
+    }
+    
+    private var formContent: some View {
+        Form {
+            nameSection
+            locationSection
+            photoSection
+            colorSection
+            notesSection
+        }
+    }
+    
+    private func handleSelectedPhotos(_ items: [PhotosPickerItem]) {
+        Task {
+            for item in items {
+                // Get asset identifier if available
+                var assetIdentifier: String?
+                if let identifier = item.itemIdentifier {
+                    // PhotosPickerItem identifier can be used with PHAsset
+                    let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
+                    if let asset = fetchResult.firstObject {
+                        assetIdentifier = asset.localIdentifier
+                    }
+                }
+                
+                // Load image data
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    photoItems.append(PhotoItem(imageData: data, assetIdentifier: assetIdentifier))
+                }
+            }
+            selectedPhotos = []
+        }
+    }
+    
+    private func handleCapturedPhotos(_ photos: [CapturedPhoto]) {
+        for photo in photos {
+            if !photoItems.contains(where: { $0.imageData == photo.imageData }) {
+                photoItems.append(PhotoItem(imageData: photo.imageData, assetIdentifier: photo.assetIdentifier))
             }
         }
+        capturedPhotos = []
     }
     
     private var nameSection: some View {
@@ -300,7 +348,10 @@ struct EditPlantView: View {
             PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 10, matching: .images) {
                 Label("Add Photos from Library", systemImage: "photo.on.rectangle.angled")
             }
-            if !photoDataItems.isEmpty {
+            #if os(iOS)
+            CameraButton(showingCamera: $showingCamera, capturedPhotos: $capturedPhotos)
+            #endif
+            if !photoItems.isEmpty {
                 photoScrollView
             }
         }
@@ -309,19 +360,30 @@ struct EditPlantView: View {
     private var photoScrollView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
-                ForEach(photoDataItems.indices, id: \.self) { index in
-                    photoThumbnail(at: index)
+                ForEach(photoItems) { item in
+                    photoThumbnail(for: item)
                 }
             }
             .padding(.vertical, 4)
         }
     }
     
-    private func photoThumbnail(at index: Int) -> some View {
+    private func photoThumbnail(for item: PhotoItem) -> some View {
         ZStack(alignment: .topTrailing) {
-            imageView(data: photoDataItems[index])
-            deleteButton(for: index)
+            imageView(data: item.imageData)
+            deleteButton(for: item)
         }
+    }
+    
+    private func deleteButton(for item: PhotoItem) -> some View {
+        Button {
+            photoItems.removeAll { $0.id == item.id }
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(.white, .red)
+                .font(.title3)
+        }
+        .padding(4)
     }
     
     private func imageView(data: Data) -> some View {
@@ -344,17 +406,6 @@ struct EditPlantView: View {
             }
             #endif
         }
-    }
-    
-    private func deleteButton(for index: Int) -> some View {
-        Button {
-            photoDataItems.remove(at: index)
-        } label: {
-            Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(.white, .red)
-                .font(.title3)
-        }
-        .padding(4)
     }
     
     private var colorSection: some View {
@@ -387,15 +438,16 @@ struct EditPlantView: View {
             plant.position = position ?? plant.position
             plant.notes = notes.isEmpty ? nil : notes.trimmingCharacters(in: .whitespaces)
             
-            let existingPhotoData = Set(plant.photos.map { $0.imageData })
-            let newPhotoData = Set(photoDataItems)
-            
-            for photo in plant.photos where !newPhotoData.contains(photo.imageData) {
+            // Remove photos that are no longer in the photo items list
+            let newPhotoDataSet = Set(photoItems.map { $0.imageData })
+            for photo in plant.photos where !newPhotoDataSet.contains(photo.imageData) {
                 modelContext.delete(photo)
             }
             
-            for data in photoDataItems where !existingPhotoData.contains(data) {
-                let photo = PlantPhoto(imageData: data, assetIdentifier: nil, plant: plant)
+            // Add new photos
+            let existingPhotoDataSet = Set(plant.photos.map { $0.imageData })
+            for item in photoItems where !existingPhotoDataSet.contains(item.imageData) {
+                let photo = PlantPhoto(imageData: item.imageData, assetIdentifier: item.assetIdentifier, plant: plant)
                 modelContext.insert(photo)
                 plant.photos.append(photo)
             }
