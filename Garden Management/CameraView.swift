@@ -8,12 +8,17 @@
 import SwiftUI
 import Photos
 
+struct CapturedPhoto {
+    let imageData: Data
+    let assetIdentifier: String?
+}
+
 #if os(iOS)
 import UIKit
 
 struct CameraView: UIViewControllerRepresentable {
     @Binding var isPresented: Bool
-    @Binding var capturedImages: [Data]
+    @Binding var capturedPhotos: [CapturedPhoto]
     var saveToPhotoLibrary: Bool = true
     
     class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
@@ -26,11 +31,11 @@ struct CameraView: UIViewControllerRepresentable {
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             if let image = info[.originalImage] as? UIImage {
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
-                    parent.capturedImages.append(imageData)
-                }
-                
-                if parent.saveToPhotoLibrary {
-                    saveImageToPhotoLibrary(image)
+                    if parent.saveToPhotoLibrary {
+                        saveImageToPhotoLibrary(image, imageData: imageData)
+                    } else {
+                        parent.capturedPhotos.append(CapturedPhoto(imageData: imageData, assetIdentifier: nil))
+                    }
                 }
             }
             
@@ -41,20 +46,31 @@ struct CameraView: UIViewControllerRepresentable {
             parent.isPresented = false
         }
         
-        private func saveImageToPhotoLibrary(_ image: UIImage) {
+        private func saveImageToPhotoLibrary(_ image: UIImage, imageData: Data) {
             PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
                 guard status == .authorized else {
                     print("Photo library access denied")
+                    // Still add photo with data but no identifier
+                    DispatchQueue.main.async {
+                        self.parent.capturedPhotos.append(CapturedPhoto(imageData: imageData, assetIdentifier: nil))
+                    }
                     return
                 }
                 
+                var assetIdentifier: String?
                 PHPhotoLibrary.shared().performChanges({
-                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                    let request = PHAssetChangeRequest.creationRequestForAsset(from: image)
+                    assetIdentifier = request.placeholderForCreatedAsset?.localIdentifier
                 }) { success, error in
-                    if success {
-                        print("Successfully saved photo to library")
-                    } else if let error = error {
-                        print("Error saving photo: \(error.localizedDescription)")
+                    DispatchQueue.main.async {
+                        if success {
+                            print("Successfully saved photo to library with identifier: \(assetIdentifier ?? "none")")
+                            self.parent.capturedPhotos.append(CapturedPhoto(imageData: imageData, assetIdentifier: assetIdentifier))
+                        } else {
+                            print("Error saving photo: \(error?.localizedDescription ?? "unknown")")
+                            // Still add photo with data but no identifier
+                            self.parent.capturedPhotos.append(CapturedPhoto(imageData: imageData, assetIdentifier: nil))
+                        }
                     }
                 }
             }
@@ -78,7 +94,7 @@ struct CameraView: UIViewControllerRepresentable {
 
 struct CameraButton: View {
     @Binding var showingCamera: Bool
-    @Binding var capturedImages: [Data]
+    @Binding var capturedPhotos: [CapturedPhoto]
     
     var body: some View {
         Button {

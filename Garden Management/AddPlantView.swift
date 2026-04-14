@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import Photos
 
 struct AddPlantView: View {
     @Environment(\.modelContext) private var modelContext
@@ -28,9 +29,27 @@ struct AddPlantView: View {
     @State private var position: Int?
     @State private var notes = ""
     @State private var selectedPhotos: [PhotosPickerItem] = []
-    @State private var photoDataItems: [Data] = []
+    @State private var capturedPhotos: [CapturedPhoto] = []
     @State private var showingCamera = false
     @State private var isInitialSetup = true
+    @State private var showingPhotoSelector = false
+    @State private var showingColorPicker = false
+    @State private var extractedColors: [DominantColor] = []
+    @State private var colorPickerTarget: ColorTarget = .primary
+    @State private var showValidationErrors = false
+    @FocusState private var focusedField: Field?
+    
+    enum ColorTarget {
+        case primary
+        case secondary
+    }
+    
+    enum Field: Hashable {
+        case name
+        case bed
+        case row
+        case position
+    }
     
     var availableRows: [BedRow] {
         selectedBed?.rows.sorted { $0.identifier < $1.identifier } ?? []
@@ -68,10 +87,19 @@ struct AddPlantView: View {
 #if os(iOS)
                         .textInputAutocapitalization(.words)
 #endif
+                        .focused($focusedField, equals: .name)
+                    
+                    if showValidationErrors && plantName.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Text("Plant name is required")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 } header: {
                     Text("Plant Details")
                 } footer: {
-                    Text("E.g., Dahlia \"Winkie Chevron\"")
+                    if !showValidationErrors || !plantName.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Text("E.g., Dahlia \"Winkie Chevron\"")
+                    }
                 }
                 
                 Section {
@@ -81,6 +109,13 @@ struct AddPlantView: View {
                             Text(bed.name).tag(bed as Bed?)
                         }
                     }
+                    .focused($focusedField, equals: .bed)
+                    
+                    if showValidationErrors && selectedBed == nil {
+                        Text("Please select a bed")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                     
                     if !availableRows.isEmpty {
                         Picker("Row", selection: $rowIdentifier) {
@@ -89,6 +124,13 @@ struct AddPlantView: View {
                                 Text("Row \(row.identifier)").tag(row.identifier)
                             }
                         }
+                        .focused($focusedField, equals: .row)
+                        
+                        if showValidationErrors && rowIdentifier.isEmpty {
+                            Text("Please select a row")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                         
                         if !availablePositions.isEmpty {
                             Picker("Position", selection: $position) {
@@ -96,6 +138,13 @@ struct AddPlantView: View {
                                 ForEach(availablePositions, id: \.self) { pos in
                                     Text("\(pos)").tag(pos as Int?)
                                 }
+                            }
+                            .focused($focusedField, equals: .position)
+                            
+                            if showValidationErrors && position == nil {
+                                Text("Please select a position")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
                             }
                         }
                     } else if selectedBed != nil {
@@ -111,28 +160,29 @@ struct AddPlantView: View {
                     PhotosPicker(
                         selection: $selectedPhotos,
                         maxSelectionCount: 10,
-                        matching: .images
+                        matching: .images,
+                        photoLibrary: .shared()
                     ) {
                         Label("Add Photos from Library", systemImage: "photo.on.rectangle.angled")
                     }
                     
 #if os(iOS)
-                    CameraButton(showingCamera: $showingCamera, capturedImages: $photoDataItems)
+                    CameraButton(showingCamera: $showingCamera, capturedPhotos: $capturedPhotos)
 #endif
                     
-                    if !photoDataItems.isEmpty {
+                    if !capturedPhotos.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
-                                ForEach(photoDataItems.indices, id: \.self) { index in
+                                ForEach(capturedPhotos.indices, id: \.self) { index in
                                     ZStack(alignment: .topTrailing) {
-                                        Image(data: photoDataItems[index])
+                                        Image(data: capturedPhotos[index].imageData)
                                             .resizable()
                                             .scaledToFill()
                                             .frame(width: 100, height: 100)
                                             .clipShape(RoundedRectangle(cornerRadius: 8))
                                         
                                         Button {
-                                            photoDataItems.remove(at: index)
+                                            capturedPhotos.remove(at: index)
                                         } label: {
                                             Image(systemName: "xmark.circle.fill")
                                                 .foregroundStyle(.white, .red)
@@ -161,6 +211,27 @@ struct AddPlantView: View {
                             ColorPicker("Color", selection: $secondaryColor, supportsOpacity: false)
                         }
                     }
+                    
+                    if !capturedPhotos.isEmpty {
+                        Button {
+                            colorPickerTarget = .primary
+                            extractedColors = [] // Reset colors
+                            showingColorPicker = true // Show sheet immediately with loading state
+                            if capturedPhotos.count == 1 {
+                                Task {
+                                    let colors = await Task.detached(priority: .userInitiated) {
+                                        ColorExtractor.extractDominantColors(from: capturedPhotos[0].imageData, count: 20)
+                                    }.value
+                                    extractedColors = colors
+                                }
+                            } else {
+                                showingColorPicker = false
+                                showingPhotoSelector = true
+                            }
+                        } label: {
+                            Label("Pick Color from Photo", systemImage: "eyedropper")
+                        }
+                    }
                 } header: {
                     Text("Colors")
                 }
@@ -184,19 +255,35 @@ struct AddPlantView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
-                        addPlant()
+                        if !isValid {
+                            showValidationErrors = true
+                            focusFirstInvalidField()
+                        } else {
+                            addPlant()
+                        }
                     }
-                    .disabled(!isValid)
                 }
             }
             .onChange(of: selectedPhotos) { oldValue, newValue in
                 Task {
-                    photoDataItems.removeAll()
                     for item in newValue {
+                        // Get asset identifier if available
+                        var assetIdentifier: String?
+                        if let identifier = item.itemIdentifier {
+                            // PhotosPickerItem identifier can be used with PHAsset
+                            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
+                            if let asset = fetchResult.firstObject {
+                                assetIdentifier = asset.localIdentifier
+                            }
+                        }
+                        
+                        // Load image data
                         if let data = try? await item.loadTransferable(type: Data.self) {
-                            photoDataItems.append(data)
+                            capturedPhotos.append(CapturedPhoto(imageData: data, assetIdentifier: assetIdentifier))
                         }
                     }
+                    // Clear selection after processing
+                    selectedPhotos = []
                 }
             }
             .onChange(of: selectedBed) { oldValue, newValue in
@@ -227,9 +314,65 @@ struct AddPlantView: View {
                     isInitialSetup = false
                 }
             }
+            .sheet(isPresented: $showingPhotoSelector) {
+                PhotoSelectionSheet(
+                    photos: capturedPhotos.map { $0.imageData },
+                    onSelect: { photoData in
+                        extractedColors = [] // Reset colors
+                        showingColorPicker = true // Show sheet immediately with loading state
+                        Task {
+                            let colors = await Task.detached(priority: .userInitiated) {
+                                ColorExtractor.extractDominantColors(from: photoData, count: 20)
+                            }.value
+                            extractedColors = colors
+                        }
+                    },
+                    isPresented: $showingPhotoSelector
+                )
+            }
+            .sheet(isPresented: $showingColorPicker) {
+                if !extractedColors.isEmpty {
+                    ColorSelectionSheet(
+                        colors: extractedColors,
+                        onSelect: { color, hexString in
+                            if colorPickerTarget == .primary {
+                                primaryColor = color
+                                hasPrimaryColor = true
+                            } else {
+                                secondaryColor = color
+                                hasSecondaryColor = true
+                            }
+                        },
+                        isPresented: $showingColorPicker
+                    )
+                } else {
+                    NavigationStack {
+                        VStack {
+                            Spacer()
+                            ProgressView()
+                                .scaleEffect(1.5)
+                            Text("Extracting colors...")
+                                .padding(.top)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .navigationTitle("Pick Color from Photo")
+#if os(iOS)
+                        .navigationBarTitleDisplayMode(.inline)
+#endif
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") {
+                                    showingColorPicker = false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 #if os(iOS)
             .fullScreenCover(isPresented: $showingCamera) {
-                CameraView(isPresented: $showingCamera, capturedImages: $photoDataItems)
+                CameraView(isPresented: $showingCamera, capturedPhotos: $capturedPhotos)
                     .ignoresSafeArea()
             }
 #endif
@@ -244,6 +387,18 @@ struct AddPlantView: View {
         selectedBed != nil &&
         !rowIdentifier.isEmpty &&
         position != nil
+    }
+    
+    private func focusFirstInvalidField() {
+        if plantName.trimmingCharacters(in: .whitespaces).isEmpty {
+            focusedField = .name
+        } else if selectedBed == nil {
+            focusedField = .bed
+        } else if rowIdentifier.isEmpty {
+            focusedField = .row
+        } else if position == nil {
+            focusedField = .position
+        }
     }
     
     private func addPlant() {
@@ -264,10 +419,14 @@ struct AddPlantView: View {
             modelContext.insert(plant)
             bed.plants.append(plant)
             
-            for photoData in photoDataItems {
-                let photo = PlantPhoto(imageData: photoData, plant: plant)
-                modelContext.insert(photo)
-                plant.photos.append(photo)
+            for photo in capturedPhotos {
+                let plantPhoto = PlantPhoto(
+                    imageData: photo.imageData,
+                    assetIdentifier: photo.assetIdentifier,
+                    plant: plant
+                )
+                modelContext.insert(plantPhoto)
+                plant.photos.append(plantPhoto)
             }
             
             isPresented = false

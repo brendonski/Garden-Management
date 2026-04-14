@@ -47,6 +47,11 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Plants", systemImage: "leaf")
                 }
+            
+            SettingsView()
+                .tabItem {
+                    Label("Settings", systemImage: "gear")
+                }
         }
 #else
         // For macOS, use sidebar navigation
@@ -62,6 +67,12 @@ struct MainTabView: View {
                     PlantListView()
                 } label: {
                     Label("Plants", systemImage: "leaf")
+                }
+                
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Label("Settings", systemImage: "gear")
                 }
             }
             .navigationTitle("Garden Management")

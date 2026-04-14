@@ -99,6 +99,7 @@ struct AddBedSheet: View {
     @Binding var isPresented: Bool
     @State private var bedName = ""
     @State private var positionCount = ""
+    @State private var rowCount = ""
     
     var body: some View {
         NavigationStack {
@@ -109,6 +110,11 @@ struct AddBedSheet: View {
                         .textInputAutocapitalization(.words)
 #endif
                     
+                    TextField("Number of rows", text: $rowCount)
+#if os(iOS)
+                        .keyboardType(.numberPad)
+#endif
+                    
                     TextField("Number of positions per row", text: $positionCount)
 #if os(iOS)
                         .keyboardType(.numberPad)
@@ -116,7 +122,7 @@ struct AddBedSheet: View {
                 } header: {
                     Text("Bed Details")
                 } footer: {
-                    Text("Number of positions in each row of this bed")
+                    Text("Rows will be labeled alphabetically (A, B, C, etc.)")
                 }
             }
             .navigationTitle("Add Bed")
@@ -145,15 +151,28 @@ struct AddBedSheet: View {
     private var isValid: Bool {
         !bedName.trimmingCharacters(in: .whitespaces).isEmpty &&
         Int(positionCount) != nil &&
-        Int(positionCount)! > 0
+        Int(positionCount)! > 0 &&
+        Int(rowCount) != nil &&
+        Int(rowCount)! > 0
     }
     
     private func addBed() {
-        guard let count = Int(positionCount) else { return }
+        guard let count = Int(positionCount),
+              let numRows = Int(rowCount) else { return }
         
         withAnimation {
             let bed = Bed(name: bedName.trimmingCharacters(in: .whitespaces), positionCount: count)
             modelContext.insert(bed)
+            
+            // Create rows alphabetically
+            let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            for i in 0..<min(numRows, 26) { // Limit to 26 rows (A-Z)
+                let rowIdentifier = String(alphabet[alphabet.index(alphabet.startIndex, offsetBy: i)])
+                let row = BedRow(identifier: rowIdentifier, bed: bed)
+                modelContext.insert(row)
+                bed.rows.append(row)
+            }
+            
             isPresented = false
         }
     }

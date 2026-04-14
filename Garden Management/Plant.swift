@@ -49,13 +49,15 @@ final class PlantPhoto {
     var imageData: Data
     var capturedDate: Date
     var caption: String?
+    var assetIdentifier: String?  // PHAsset localIdentifier for iCloud synced photos
     
     var plant: Plant?
     
-    init(imageData: Data, capturedDate: Date = Date(), caption: String? = nil, plant: Plant? = nil) {
+    init(imageData: Data, capturedDate: Date = Date(), caption: String? = nil, assetIdentifier: String? = nil, plant: Plant? = nil) {
         self.imageData = imageData
         self.capturedDate = capturedDate
         self.caption = caption
+        self.assetIdentifier = assetIdentifier
         self.plant = plant
     }
 }
