@@ -193,12 +193,14 @@ struct PositionCell: View {
                 if let plant = plant {
                     // Plant exists
                     if let firstPhoto = plant.photos.first {
-                        // Show photo
-                        Image(data: firstPhoto.imageData)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: cellWidth, height: cellWidth)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        // Show photo using thumbnail cache
+                        ThumbnailImageView(
+                            imageData: firstPhoto.imageData,
+                            size: cellWidth,
+                            cacheKey: firstPhoto.persistentModelID.hashValue.description
+                        )
+                        .frame(width: cellWidth, height: cellWidth)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     } else if let primaryColorHex = plant.primaryColor, let primaryColor = Color(hex: primaryColorHex) {
                         // Show color swatch
                         RoundedRectangle(cornerRadius: 8)

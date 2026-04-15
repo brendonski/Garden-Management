@@ -266,19 +266,11 @@ struct EditPlantView: View {
     private func handleSelectedPhotos(_ items: [PhotosPickerItem]) {
         Task {
             for item in items {
-                // Get asset identifier if available
-                var assetIdentifier: String?
-                if let identifier = item.itemIdentifier {
-                    // PhotosPickerItem identifier can be used with PHAsset
-                    let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
-                    if let asset = fetchResult.firstObject {
-                        assetIdentifier = asset.localIdentifier
-                    }
-                }
-                
                 // Load image data
                 if let data = try? await item.loadTransferable(type: Data.self) {
-                    photoItems.append(PhotoItem(imageData: data, assetIdentifier: assetIdentifier))
+                    // Get or create asset identifier (avoids duplicates)
+                    let assetId = await PhotoLibraryHelper.getOrCreateAssetIdentifier(for: data)
+                    photoItems.append(PhotoItem(imageData: data, assetIdentifier: assetId))
                 }
             }
             selectedPhotos = []

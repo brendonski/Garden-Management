@@ -320,11 +320,13 @@ struct PlantInBedRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             if let firstPhoto = plant.photos.first {
-                Image(data: firstPhoto.imageData)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 50, height: 50)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                ThumbnailImageView(
+                    imageData: firstPhoto.imageData,
+                    size: 50,
+                    cacheKey: firstPhoto.persistentModelID.hashValue.description
+                )
+                .frame(width: 50, height: 50)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             } else if let primaryColorHex = plant.primaryColor, let primaryColor = Color(hex: primaryColorHex) {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(primaryColor)

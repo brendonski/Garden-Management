@@ -21,6 +21,82 @@ struct PhotoAssetInfo {
 
 class PhotoLibraryHelper {
     
+    /// Find an existing asset in the library that matches the given image data
+    /// Returns the asset identifier if found, nil otherwise
+    @MainActor
+    static func findExistingAsset(for imageData: Data) async -> String? {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        guard status == .authorized || status == .limited else {
+            return nil
+        }
+        
+        #if os(iOS)
+        guard let sourceImage = UIImage(data: imageData) else { return nil }
+        let imageSize = sourceImage.size
+        let imageScale = sourceImage.scale
+        #elseif os(macOS)
+        guard let sourceImage = NSImage(data: imageData) else { return nil }
+        let imageSize = sourceImage.size
+        let imageScale: CGFloat = 1.0 // NSImage doesn't have scale property
+        #endif
+        
+        // Fetch recent photos to search for matches
+        // Photos from PhotosPicker should be recent
+        let fetchOptions = PHFetchOptions()
+        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        fetchOptions.fetchLimit = 200 // Search last 200 photos for performance
+        
+        let allPhotos = PHAsset.fetchAssets(with: .image, options: fetchOptions)
+        
+        // Expected pixel dimensions
+        let expectedWidth = Int(imageSize.width * imageScale)
+        let expectedHeight = Int(imageSize.height * imageScale)
+        
+        // Search for a matching asset
+        var matchingIdentifier: String?
+        
+        allPhotos.enumerateObjects { asset, _, stop in
+            // Compare by pixel dimensions (this is a fast and reliable check)
+            let widthMatches = abs(asset.pixelWidth - expectedWidth) <= 1 // Allow 1px tolerance
+            let heightMatches = abs(asset.pixelHeight - expectedHeight) <= 1
+            
+            if widthMatches && heightMatches {
+                // Found a match by dimensions - likely the same photo
+                matchingIdentifier = asset.localIdentifier
+                stop.pointee = true
+            }
+        }
+        
+        return matchingIdentifier
+    }
+    
+    /// Get or create an asset identifier for an image
+    /// First checks if the image already exists in the library, otherwise saves it
+    @MainActor
+    static func getOrCreateAssetIdentifier(for imageData: Data) async -> String? {
+        // First, try to find an existing matching asset
+        if let existingIdentifier = await findExistingAsset(for: imageData) {
+            print("Found existing photo in library: \(existingIdentifier)")
+            return existingIdentifier
+        }
+        
+        // No match found, save to library
+        #if os(iOS)
+        guard let image = UIImage(data: imageData) else { return nil }
+        #elseif os(macOS)
+        guard let image = NSImage(data: imageData) else { return nil }
+        #endif
+        
+        do {
+            let identifier = try await saveAndGetIdentifier(image: image)
+            print("Saved new photo to library: \(identifier ?? "none")")
+            return identifier
+        } catch {
+            print("Failed to save photo to library: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
     /// Save an image to the photo library and return its asset identifier
     @MainActor
     static func saveAndGetIdentifier(image: NativeImage) async throws -> String? {

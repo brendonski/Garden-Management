@@ -131,11 +131,13 @@ struct PlantRowView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             if let firstPhoto = plant.photos.first {
-                Image(data: firstPhoto.imageData)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 60, height: 60)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                ThumbnailImageView(
+                    imageData: firstPhoto.imageData,
+                    size: 60,
+                    cacheKey: firstPhoto.persistentModelID.hashValue.description
+                )
+                .frame(width: 60, height: 60)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             } else if let primaryColorHex = plant.primaryColor, let primaryColor = Color(hex: primaryColorHex) {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(primaryColor)
