@@ -11,16 +11,9 @@ import SwiftData
 struct BedDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var bed: Bed
-    @State private var showingAddRow = false
     @State private var isEditingBedName = false
     @State private var editedBedName = ""
     @State private var showingAddPlant = false
-    @State private var showingDeleteAlert = false
-    @State private var deleteAlertMessage = ""
-    
-    var sortedRows: [BedRow] {
-        bed.rows.sorted { $0.identifier < $1.identifier }
-    }
     
     var body: some View {
         List {
@@ -74,26 +67,16 @@ struct BedDetailView: View {
             }
             
             Section {
-                ForEach(sortedRows) { row in
-                    RowItemView(row: row, onDelete: { deleteRow(row) })
-                }
-                .onDelete(perform: deleteRows)
-                
-                if bed.rows.isEmpty {
-                    Text("No rows yet")
-                        .foregroundStyle(.secondary)
-                        .italic()
-                }
+                BedRowCountRow(bed: bed)
             } header: {
-                HStack {
-                    Text("Rows")
-                    Spacer()
-                    Button {
-                        showingAddRow = true
-                    } label: {
-                        Label("Add Row", systemImage: "plus.circle.fill")
-                            .labelStyle(.iconOnly)
-                    }
+                Text("Rows")
+            } footer: {
+                if bed.rows.isEmpty {
+                    Text("Add at least one row before adding plants")
+                        .font(.caption)
+                } else {
+                    Text("Rows: \(bed.rows.sorted { $0.identifier < $1.identifier }.map { $0.identifier }.joined(separator: ", "))")
+                        .font(.caption)
                 }
             }
             
@@ -136,51 +119,139 @@ struct BedDetailView: View {
             }
         }
         .navigationTitle(bed.displayName)
-        .sheet(isPresented: $showingAddRow) {
-            AddRowSheet(bed: bed, isPresented: $showingAddRow)
-        }
         .sheet(isPresented: $showingAddPlant) {
             AddPlantView(isPresented: $showingAddPlant, prefilledBed: bed)
         }
-        .alert("Cannot Delete Row", isPresented: $showingDeleteAlert) {
+    }
+}
+
+struct BedRowCountRow: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var bed: Bed
+    @State private var isEditingRowCount = false
+    @State private var rowCountText = ""
+    @State private var showingDeleteAlert = false
+    @State private var deleteAlertMessage = ""
+    
+    var body: some View {
+        HStack {
+            Text("Number of Rows")
+                .foregroundStyle(.secondary)
+            
+            if isEditingRowCount {
+                TextField("Count", text: $rowCountText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+#if os(iOS)
+                    .keyboardType(.numberPad)
+#endif
+                
+                Button("Save") {
+                    if let count = Int(rowCountText), count >= 0 {
+                        updateRowCount(to: count)
+                        isEditingRowCount = false
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                
+                Button("Cancel") {
+                    isEditingRowCount = false
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else {
+                Spacer()
+                Text("\(bed.rows.count)")
+                    .fontWeight(.medium)
+                
+                Button("Edit") {
+                    rowCountText = "\(bed.rows.count)"
+                    isEditingRowCount = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .alert("Cannot Remove Rows", isPresented: $showingDeleteAlert) {
             Button("OK", role: .cancel) { }
         } message: {
             Text(deleteAlertMessage)
         }
     }
     
-    private func deleteRow(_ row: BedRow) {
-        let plantsInRow = bed.plants.filter { $0.rowIdentifier == row.identifier }
+    private func updateRowCount(to newCount: Int) {
+        let currentCount = bed.rows.count
         
-        if !plantsInRow.isEmpty {
-            deleteAlertMessage = "This row contains \(plantsInRow.count) plant\(plantsInRow.count == 1 ? "" : "s"). Please remove all plants from the row before deleting it."
-            showingDeleteAlert = true
+        if newCount == currentCount {
             return
         }
         
-        withAnimation {
-            modelContext.delete(row)
+        if newCount > currentCount {
+            // Add new rows
+            let sortedRows = bed.rows.sorted { $0.identifier < $1.identifier }
+            let lastIdentifier = sortedRows.last?.identifier ?? ""
+            let startIndex = getNextLetterIndex(after: lastIdentifier)
+            
+            withAnimation {
+                for i in 0..<(newCount - currentCount) {
+                    let identifier = getLetterForIndex(startIndex + i)
+                    let row = BedRow(identifier: identifier, bed: bed)
+                    modelContext.insert(row)
+                    bed.rows.append(row)
+                }
+            }
+        } else {
+            // Remove rows (from the end)
+            let sortedRows = bed.rows.sorted { $0.identifier < $1.identifier }
+            let rowsToRemove = sortedRows.suffix(currentCount - newCount)
+            
+            // Check if any rows to be removed have plants
+            for row in rowsToRemove {
+                let plantsInRow = bed.plants.filter { $0.rowIdentifier == row.identifier }
+                if !plantsInRow.isEmpty {
+                    deleteAlertMessage = "Cannot reduce row count. Row \(row.identifier) contains \(plantsInRow.count) plant\(plantsInRow.count == 1 ? "" : "s"). Please remove all plants from rows \(rowsToRemove.map { $0.identifier }.joined(separator: ", ")) first."
+                    showingDeleteAlert = true
+                    return
+                }
+            }
+            
+            // Safe to delete
+            withAnimation {
+                for row in rowsToRemove {
+                    modelContext.delete(row)
+                }
+            }
         }
     }
     
-    private func deleteRows(offsets: IndexSet) {
-        let rowsToDelete = offsets.map { sortedRows[$0] }
-        
-        for row in rowsToDelete {
-            let plantsInRow = bed.plants.filter { $0.rowIdentifier == row.identifier }
-            
-            if !plantsInRow.isEmpty {
-                deleteAlertMessage = "Row \(row.identifier) contains \(plantsInRow.count) plant\(plantsInRow.count == 1 ? "" : "s"). Please remove all plants from the row before deleting it."
-                showingDeleteAlert = true
-                return
-            }
+    private func getNextLetterIndex(after identifier: String) -> Int {
+        if identifier.isEmpty {
+            return 0
         }
-        
-        withAnimation {
-            for row in rowsToDelete {
-                modelContext.delete(row)
-            }
+        // Convert letter to index (A=0, B=1, etc.)
+        guard let firstChar = identifier.first,
+              let asciiValue = firstChar.asciiValue else {
+            return 0
         }
+        return Int(asciiValue - Character("A").asciiValue!) + 1
+    }
+    
+    private func getLetterForIndex(_ index: Int) -> String {
+        // Convert index to letter (0=A, 1=B, etc.)
+        // For now, support A-Z (26 letters)
+        let letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        if index < letters.count {
+            let letterIndex = letters.index(letters.startIndex, offsetBy: index)
+            return String(letters[letterIndex])
+        }
+        // If we need more than 26, use AA, AB, etc.
+        let firstLetter = index / 26
+        let secondLetter = index % 26
+        if firstLetter > 0 {
+            return getLetterForIndex(firstLetter - 1) + getLetterForIndex(secondLetter)
+        }
+        return String(letters[letters.index(letters.startIndex, offsetBy: secondLetter)])
     }
 }
 
@@ -228,88 +299,6 @@ struct BedPositionCountRow: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
-        }
-    }
-}
-
-struct RowItemView: View {
-    @Bindable var row: BedRow
-    var onDelete: () -> Void
-    
-    var body: some View {
-        HStack {
-            Text("Row \(row.identifier)")
-                .font(.headline)
-            Spacer()
-#if os(iOS)
-            Button(role: .destructive, action: onDelete) {
-                Label("Delete", systemImage: "trash")
-                    .labelStyle(.iconOnly)
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.borderless)
-#endif
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-struct AddRowSheet: View {
-    @Environment(\.modelContext) private var modelContext
-    var bed: Bed
-    @Binding var isPresented: Bool
-    @State private var rowIdentifier = ""
-    
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Row Identifier", text: $rowIdentifier)
-#if os(iOS)
-                        .textInputAutocapitalization(.characters)
-#endif
-                } header: {
-                    Text("Row Details")
-                } footer: {
-                    Text("Row identifier (e.g., A, B, C)")
-                }
-            }
-            .navigationTitle("Add Row")
-#if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-#endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        isPresented = false
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        addRow()
-                    }
-                    .disabled(!isValid)
-                }
-            }
-        }
-#if os(macOS)
-        .frame(minWidth: 400, minHeight: 200)
-#endif
-    }
-    
-    private var isValid: Bool {
-        !rowIdentifier.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-    
-    private func addRow() {
-        withAnimation {
-            let row = BedRow(
-                identifier: rowIdentifier.trimmingCharacters(in: .whitespaces).uppercased(),
-                bed: bed
-            )
-            modelContext.insert(row)
-            bed.rows.append(row)
-            isPresented = false
         }
     }
 }

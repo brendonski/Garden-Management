@@ -46,7 +46,7 @@ struct BedGridView: View {
                                 .frame(width: 50)
                             
                             ForEach(sortedRows) { row in
-                                Text("Row \(row.identifier)")
+                                Text(row.identifier)
                                     .font(.headline)
                                     .frame(width: cellWidth)
                             }
