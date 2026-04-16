@@ -173,6 +173,16 @@ struct EditPlantView: View {
     @State private var showingCamera = false
     @State private var capturedPhotos: [CapturedPhoto] = []
     
+    // Color picker from photo
+    @State private var showingColorPicker = false
+    @State private var showingPhotoSelector = false
+    @State private var extractedColors: [DominantColor] = []
+    
+    enum ColorPickerTarget {
+        case primary, secondary
+    }
+    @State private var colorPickerTarget: ColorPickerTarget = .primary
+    
     // Helper struct to track photo data and asset identifier
     struct PhotoItem: Identifiable {
         let id = UUID()
@@ -244,6 +254,60 @@ struct EditPlantView: View {
                 }
                 .onChange(of: capturedPhotos) { _, newValue in
                     handleCapturedPhotos(newValue)
+                }
+                .sheet(isPresented: $showingColorPicker) {
+                    NavigationStack {
+                        Group {
+                            if extractedColors.isEmpty {
+                                VStack {
+                                    ProgressView()
+                                        .padding()
+                                    Text("Extracting colors...")
+                                        .foregroundStyle(.secondary)
+                                }
+                            } else {
+                                ColorSelectionSheet(
+                                    colors: extractedColors,
+                                    onSelect: { color, hexString in
+                                        if colorPickerTarget == .primary {
+                                            primaryColor = color
+                                            hasPrimaryColor = true
+                                        } else {
+                                            secondaryColor = color
+                                            hasSecondaryColor = true
+                                        }
+                                    },
+                                    isPresented: $showingColorPicker
+                                )
+                            }
+                        }
+                        .navigationTitle("Pick Color from Photo")
+                        #if os(iOS)
+                        .navigationBarTitleDisplayMode(.inline)
+                        #endif
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") {
+                                    showingColorPicker = false
+                                }
+                            }
+                        }
+                    }
+                }
+                .sheet(isPresented: $showingPhotoSelector) {
+                    PhotoSelectionSheet(
+                        photos: photoItems.map { $0.imageData },
+                        onSelect: { selectedPhotoData in
+                            Task {
+                                let colors = await Task.detached(priority: .userInitiated) {
+                                    ColorExtractor.extractDominantColors(from: selectedPhotoData, count: 20)
+                                }.value
+                                extractedColors = colors
+                                showingColorPicker = true
+                            }
+                        },
+                        isPresented: $showingPhotoSelector
+                    )
                 }
                 #if os(iOS)
                 .fullScreenCover(isPresented: $showingCamera) {
@@ -408,6 +472,27 @@ struct EditPlantView: View {
                 Toggle("Add Secondary Color", isOn: $hasSecondaryColor)
                 if hasSecondaryColor {
                     ColorPicker("Color", selection: $secondaryColor, supportsOpacity: false)
+                }
+            }
+            
+            if !photoItems.isEmpty {
+                Button {
+                    colorPickerTarget = .primary
+                    extractedColors = [] // Reset colors
+                    showingColorPicker = true // Show sheet immediately with loading state
+                    if photoItems.count == 1 {
+                        Task {
+                            let colors = await Task.detached(priority: .userInitiated) {
+                                ColorExtractor.extractDominantColors(from: photoItems[0].imageData, count: 20)
+                            }.value
+                            extractedColors = colors
+                        }
+                    } else {
+                        showingColorPicker = false
+                        showingPhotoSelector = true
+                    }
+                } label: {
+                    Label("Pick Color from Photo", systemImage: "eyedropper")
                 }
             }
         }
