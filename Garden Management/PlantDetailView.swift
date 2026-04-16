@@ -12,11 +12,30 @@ import Photos
 
 struct PlantDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     let plant: Plant
     @State private var showingEditSheet = false
     @State private var showingDeleteAlert = false
     
     var body: some View {
+        Group {
+            if plant.isDeleted || plant.modelContext == nil {
+                // Plant was deleted, show placeholder and dismiss
+                ContentUnavailableView(
+                    "Plant No Longer Exists",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text("This plant has been deleted or is no longer available")
+                )
+                .onAppear {
+                    dismiss()
+                }
+            } else {
+                plantDetailContent
+            }
+        }
+    }
+    
+    private var plantDetailContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if !plant.photos.isEmpty {

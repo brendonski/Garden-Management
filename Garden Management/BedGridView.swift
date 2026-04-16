@@ -10,6 +10,7 @@ import SwiftData
 
 struct BedGridView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @Bindable var bed: Bed
     @State private var selectedPositionForAdd: PositionInfo?
     @State private var selectedPositionForEdit: PositionInfo?
@@ -26,6 +27,64 @@ struct BedGridView: View {
     }
     
     var body: some View {
+        Group {
+            if bed.isDeleted || bed.modelContext == nil {
+                // Bed was deleted, show placeholder and dismiss
+                ContentUnavailableView(
+                    "Bed No Longer Exists",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text("This bed has been deleted or is no longer available")
+                )
+                .onAppear {
+                    dismiss()
+                }
+            } else {
+                gridContent
+            }
+        }
+        .navigationTitle("\(bed.displayName) - Grid View")
+#if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+#endif
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    withAnimation {
+                        sortAscending.toggle()
+                    }
+                } label: {
+                    Label(
+                        sortAscending ? "Sort Descending" : "Sort Ascending",
+                        systemImage: sortAscending ? "arrow.down.circle" : "arrow.up.circle"
+                    )
+                }
+            }
+        }
+        .sheet(item: $selectedPositionForAdd) { positionInfo in
+            AddPlantView(
+                isPresented: Binding(
+                    get: { selectedPositionForAdd != nil },
+                    set: { if !$0 { selectedPositionForAdd = nil } }
+                ),
+                prefilledBed: bed,
+                prefilledRow: positionInfo.rowIdentifier,
+                prefilledPosition: positionInfo.position
+            )
+        }
+        .sheet(item: $selectedPositionForEdit) { positionInfo in
+            if let plant = positionInfo.plant {
+                EditPlantView(
+                    plant: plant,
+                    isPresented: Binding(
+                        get: { selectedPositionForEdit != nil },
+                        set: { if !$0 { selectedPositionForEdit = nil } }
+                    )
+                )
+            }
+        }
+    }
+    
+    private var gridContent: some View {
         GeometryReader { geometry in
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 16) {
@@ -83,46 +142,6 @@ struct BedGridView: View {
                 }
                 .frame(minWidth: geometry.size.width)
                 .padding(.vertical)
-            }
-        }
-        .navigationTitle("\(bed.displayName) - Grid View")
-#if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-#endif
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    withAnimation {
-                        sortAscending.toggle()
-                    }
-                } label: {
-                    Label(
-                        sortAscending ? "Sort Descending" : "Sort Ascending",
-                        systemImage: sortAscending ? "arrow.down.circle" : "arrow.up.circle"
-                    )
-                }
-            }
-        }
-        .sheet(item: $selectedPositionForAdd) { positionInfo in
-            AddPlantView(
-                isPresented: Binding(
-                    get: { selectedPositionForAdd != nil },
-                    set: { if !$0 { selectedPositionForAdd = nil } }
-                ),
-                prefilledBed: bed,
-                prefilledRow: positionInfo.rowIdentifier,
-                prefilledPosition: positionInfo.position
-            )
-        }
-        .sheet(item: $selectedPositionForEdit) { positionInfo in
-            if let plant = positionInfo.plant {
-                EditPlantView(
-                    plant: plant,
-                    isPresented: Binding(
-                        get: { selectedPositionForEdit != nil },
-                        set: { if !$0 { selectedPositionForEdit = nil } }
-                    )
-                )
             }
         }
     }

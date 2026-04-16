@@ -10,12 +10,31 @@ import SwiftData
 
 struct BedDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @Bindable var bed: Bed
     @State private var isEditingBedName = false
     @State private var editedBedName = ""
     @State private var showingAddPlant = false
     
     var body: some View {
+        Group {
+            if bed.isDeleted || bed.modelContext == nil {
+                // Bed was deleted, show placeholder and dismiss
+                ContentUnavailableView(
+                    "Bed No Longer Exists",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text("This bed has been deleted or is no longer available")
+                )
+                .onAppear {
+                    dismiss()
+                }
+            } else {
+                bedDetailContent
+            }
+        }
+    }
+    
+    private var bedDetailContent: some View {
         List {
             Section {
                 HStack {
