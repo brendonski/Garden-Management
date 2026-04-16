@@ -137,6 +137,7 @@ class BackupManager {
             for rowBackup in bedBackup.rows {
                 let row = BedRow(identifier: rowBackup.identifier, bed: bed)
                 modelContext.insert(row)
+                bed.rows.append(row)
             }
             
             // Import plants

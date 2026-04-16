@@ -40,6 +40,9 @@ class PhotoLibraryHelper {
         let imageScale: CGFloat = 1.0 // NSImage doesn't have scale property
         #endif
         
+        // Calculate a hash of the source image data for comparison
+        let sourceDataHash = imageData.hashValue
+        
         // Fetch recent photos to search for matches
         // Photos from PhotosPicker should be recent
         let fetchOptions = PHFetchOptions()
@@ -55,16 +58,33 @@ class PhotoLibraryHelper {
         // Search for a matching asset
         var matchingIdentifier: String?
         
-        allPhotos.enumerateObjects { asset, _, stop in
-            // Compare by pixel dimensions (this is a fast and reliable check)
-            let widthMatches = abs(asset.pixelWidth - expectedWidth) <= 1 // Allow 1px tolerance
-            let heightMatches = abs(asset.pixelHeight - expectedHeight) <= 1
-            
-            if widthMatches && heightMatches {
-                // Found a match by dimensions - likely the same photo
-                matchingIdentifier = asset.localIdentifier
-                stop.pointee = true
+        await withCheckedContinuation { continuation in
+            allPhotos.enumerateObjects { asset, _, stop in
+                // First filter: Compare by pixel dimensions (fast check)
+                let widthMatches = abs(asset.pixelWidth - expectedWidth) <= 1 // Allow 1px tolerance
+                let heightMatches = abs(asset.pixelHeight - expectedHeight) <= 1
+                
+                if widthMatches && heightMatches {
+                    // Second filter: Compare actual image data
+                    let options = PHImageRequestOptions()
+                    options.isSynchronous = true
+                    options.isNetworkAccessAllowed = false // Only check local photos for speed
+                    options.deliveryMode = .highQualityFormat
+                    
+                    PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+                        if let data = data, data.hashValue == sourceDataHash {
+                            // Exact match found
+                            matchingIdentifier = asset.localIdentifier
+                            stop.pointee = true
+                        }
+                    }
+                }
+                
+                if matchingIdentifier != nil {
+                    stop.pointee = true
+                }
             }
+            continuation.resume()
         }
         
         return matchingIdentifier
