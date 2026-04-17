@@ -425,42 +425,40 @@ struct EditPlantView: View {
                     handleCapturedPhotos(newValue)
                 }
                 .sheet(isPresented: $showingColorPicker) {
-                    NavigationStack {
-                        Group {
-                            if extractedColors.isEmpty {
-                                VStack {
-                                    ProgressView()
-                                        .padding()
-                                    Text("Extracting colors...")
-                                        .foregroundStyle(.secondary)
-                                }
-                            } else {
-                                ColorSelectionSheet(
-                                    colors: extractedColors,
-                                    onSelect: { color, hexString in
-                                        if colorPickerTarget == .primary {
-                                            primaryColor = color
-                                            hasPrimaryColor = true
-                                        } else {
-                                            secondaryColor = color
-                                            hasSecondaryColor = true
-                                        }
-                                    },
-                                    isPresented: $showingColorPicker
-                                )
+                    if extractedColors.isEmpty {
+                        NavigationStack {
+                            VStack {
+                                ProgressView()
+                                    .padding()
+                                Text("Extracting colors...")
+                                    .foregroundStyle(.secondary)
                             }
-                        }
-                        .navigationTitle("Pick Color from Photo")
-                        #if os(iOS)
-                        .navigationBarTitleDisplayMode(.inline)
-                        #endif
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Cancel") {
-                                    showingColorPicker = false
+                            .navigationTitle("Pick Color from Photo")
+                            #if os(iOS)
+                            .navigationBarTitleDisplayMode(.inline)
+                            #endif
+                            .toolbar {
+                                ToolbarItem(placement: .cancellationAction) {
+                                    Button("Cancel") {
+                                        showingColorPicker = false
+                                    }
                                 }
                             }
                         }
+                    } else {
+                        ColorSelectionSheet(
+                            colors: extractedColors,
+                            onSelect: { color, hexString in
+                                if colorPickerTarget == .primary {
+                                    primaryColor = color
+                                    hasPrimaryColor = true
+                                } else {
+                                    secondaryColor = color
+                                    hasSecondaryColor = true
+                                }
+                            },
+                            isPresented: $showingColorPicker
+                        )
                     }
                 }
                 .sheet(isPresented: $showingPhotoSelector) {
