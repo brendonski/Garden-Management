@@ -249,6 +249,76 @@ struct FullScreenPhotoView: View {
     }
 }
 
+struct FullScreenPhotoDataView: View {
+    let photoData: Data
+    @Binding var isPresented: EditPlantView.PhotoItem?
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            Image(data: photoData)
+                .resizable()
+                .scaledToFit()
+                .scaleEffect(scale)
+                .offset(offset)
+                .gesture(
+                    MagnificationGesture()
+                        .onChanged { value in
+                            scale = lastScale * value
+                        }
+                        .onEnded { _ in
+                            lastScale = scale
+                            // Reset if zoomed out too much
+                            if scale < 1.0 {
+                                withAnimation(.spring()) {
+                                    scale = 1.0
+                                    lastScale = 1.0
+                                    offset = .zero
+                                    lastOffset = .zero
+                                }
+                            }
+                        }
+                )
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            if scale > 1.0 {
+                                offset = CGSize(
+                                    width: lastOffset.width + value.translation.width,
+                                    height: lastOffset.height + value.translation.height
+                                )
+                            }
+                        }
+                        .onEnded { _ in
+                            lastOffset = offset
+                        }
+                )
+            
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        isPresented = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.white, .black.opacity(0.5))
+                            .shadow(radius: 2)
+                    }
+                    .padding()
+                }
+                Spacer()
+            }
+        }
+        .statusBar(hidden: true)
+    }
+}
+
 struct EditPlantView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Bed.name) private var beds: [Bed]
@@ -278,6 +348,9 @@ struct EditPlantView: View {
         case primary, secondary
     }
     @State private var colorPickerTarget: ColorPickerTarget = .primary
+    
+    // Fullscreen photo viewer
+    @State private var fullScreenPhoto: PhotoItem? = nil
     
     // Helper struct to track photo data and asset identifier
     struct PhotoItem: Identifiable {
@@ -410,6 +483,9 @@ struct EditPlantView: View {
                     CameraView(isPresented: $showingCamera, capturedPhotos: $capturedPhotos)
                 }
                 #endif
+                .fullScreenCover(item: $fullScreenPhoto) { photoItem in
+                    FullScreenPhotoDataView(photoData: photoItem.imageData, isPresented: $fullScreenPhoto)
+                }
         }
     }
     
@@ -523,6 +599,9 @@ struct EditPlantView: View {
     private func photoThumbnail(for item: PhotoItem) -> some View {
         ZStack(alignment: .topTrailing) {
             imageView(data: item.imageData)
+                .onTapGesture {
+                    fullScreenPhoto = item
+                }
             deleteButton(for: item)
         }
     }
@@ -545,7 +624,7 @@ struct EditPlantView: View {
                 Image(uiImage: uiImage)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 100, height: 100)
+                    .frame(width: 150, height: 150)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             #elseif os(macOS)
@@ -553,7 +632,7 @@ struct EditPlantView: View {
                 Image(nsImage: nsImage)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 100, height: 100)
+                    .frame(width: 150, height: 150)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             #endif
