@@ -35,6 +35,7 @@ struct AddPlantView: View {
     @State private var showingPhotoSelector = false
     @State private var showingColorPicker = false
     @State private var extractedColors: [DominantColor] = []
+    @State private var selectedPhotoForColorPicker: Data? = nil
     @State private var colorPickerTarget: ColorTarget = .primary
     @State private var showValidationErrors = false
     @FocusState private var focusedField: Field?
@@ -310,12 +311,11 @@ struct AddPlantView: View {
                 PhotoSelectionSheet(
                     photos: capturedPhotos.map { $0.imageData },
                     onSelect: { photoData in
+                        selectedPhotoForColorPicker = photoData
                         extractedColors = [] // Reset colors
                         showingColorPicker = true // Show sheet immediately with loading state
-                        Task {
-                            let colors = await Task.detached(priority: .userInitiated) {
-                                ColorExtractor.extractDominantColors(from: photoData, count: 20)
-                            }.value
+                        Task { @MainActor in
+                            let colors = ColorExtractor.extractDominantColors(from: photoData, count: 20)
                             extractedColors = colors
                         }
                     },
@@ -326,6 +326,7 @@ struct AddPlantView: View {
                 if !extractedColors.isEmpty {
                     ColorSelectionSheet(
                         colors: extractedColors,
+                        photoData: selectedPhotoForColorPicker,
                         onSelect: { color, hexString in
                             if colorPickerTarget == .primary {
                                 primaryColor = color

@@ -33,7 +33,7 @@ class ColorExtractor {
         let height = cgImage.height
         
         // Resize image to reduce processing time
-        let maxDimension = 100
+        let maxDimension = 150
         let scale = min(1.0, Double(maxDimension) / Double(max(width, height)))
         let scaledWidth = Int(Double(width) * scale)
         let scaledHeight = Int(Double(height) * scale)
@@ -55,8 +55,8 @@ class ColorExtractor {
         
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: scaledWidth, height: scaledHeight))
         
-        // Extract colors and calculate brightness
-        var colorBrightness: [String: (r: Int, g: Int, b: Int, brightness: Double, saturation: Double)] = [:]
+        // Track color frequency and properties
+        var colorStats: [String: (r: Int, g: Int, b: Int, count: Int, brightness: Double, saturation: Double)] = [:]
         
         for i in stride(from: 0, to: pixelData.count, by: 4) {
             let r = Int(pixelData[i])
@@ -68,7 +68,7 @@ class ColorExtractor {
             guard a > 128 else { continue }
             
             // Quantize colors to reduce variation (group similar colors)
-            let quantizationLevel = 32
+            let quantizationLevel = 24 // Slightly finer grouping for better color accuracy
             let qr = (r / quantizationLevel) * quantizationLevel
             let qg = (g / quantizationLevel) * quantizationLevel
             let qb = (b / quantizationLevel) * quantizationLevel
@@ -83,19 +83,34 @@ class ColorExtractor {
             let minVal = min(qr, qg, qb)
             let saturation = maxVal > 0 ? Double(maxVal - minVal) / Double(maxVal) : 0.0
             
-            // Only keep the brightest and most saturated version of each quantized color
-            if let existing = colorBrightness[key] {
-                if brightness * saturation > existing.brightness * existing.saturation {
-                    colorBrightness[key] = (qr, qg, qb, brightness, saturation)
-                }
+            // Accumulate pixel count and properties
+            if var existing = colorStats[key] {
+                existing.count += 1
+                colorStats[key] = existing
             } else {
-                colorBrightness[key] = (qr, qg, qb, brightness, saturation)
+                colorStats[key] = (qr, qg, qb, 1, brightness, saturation)
             }
         }
         
-        // Sort by brightness (weighted by saturation to favor vibrant colors)
-        let sortedColors = colorBrightness.values
-            .sorted { $0.brightness * (1.0 + $0.saturation) > $1.brightness * (1.0 + $1.saturation) }
+        // Filter out very dark or very desaturated colors (likely background)
+        let filteredColors = colorStats.values.filter { colorData in
+            // Exclude very dark colors (brightness < 40)
+            guard colorData.brightness > 40 else { return false }
+            // Exclude very desaturated/gray colors (saturation < 0.15)
+            guard colorData.saturation > 0.15 else { return false }
+            return true
+        }
+        
+        // Sort by a score that combines area, brightness, and saturation
+        // Prioritize: large area + bright + saturated colors (typical of flowers)
+        let sortedColors = filteredColors
+            .sorted { colorA, colorB in
+                // Calculate score: area coverage × brightness × saturation²
+                // Saturation is squared to heavily favor vibrant colors
+                let scoreA = Double(colorA.count) * colorA.brightness * pow(colorA.saturation, 2.0)
+                let scoreB = Double(colorB.count) * colorB.brightness * pow(colorB.saturation, 2.0)
+                return scoreA > scoreB
+            }
             .prefix(count)
         
         // Convert to DominantColor objects
@@ -106,42 +121,59 @@ class ColorExtractor {
                 blue: Double(colorData.b) / 255.0
             )
             let hexString = String(format: "#%02X%02X%02X", colorData.r, colorData.g, colorData.b)
-            return DominantColor(color: color, hexString: hexString, count: 0)
+            return DominantColor(color: color, hexString: hexString, count: colorData.count)
         }
     }
 }
 
 struct ColorSelectionSheet: View {
     let colors: [DominantColor]
+    let photoData: Data?
     let onSelect: (Color, String) -> Void
     @Binding var isPresented: Bool
     
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    ForEach(colors) { dominantColor in
-                        Button {
-                            onSelect(dominantColor.color, dominantColor.hexString)
-                            isPresented = false
-                        } label: {
-                            HStack {
-                                Circle()
-                                    .fill(dominantColor.color)
-                                    .frame(width: 50, height: 50)
-                                    .overlay(Circle().stroke(Color.gray.opacity(0.3), lineWidth: 1))
-                                
-                                Text(dominantColor.hexString)
-                                    .font(.system(.body, design: .monospaced))
-                                    .foregroundStyle(.primary)
-                                
-                                Spacer()
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Show the selected photo if available
+                    if let photoData = photoData {
+                        Image(data: photoData)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 300)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .padding(.horizontal)
+                    }
+                    
+                    // Grid of color squares
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Select a color from your photo")
+                            .font(.headline)
+                            .padding(.horizontal)
+                        
+                        LazyVGrid(columns: [
+                            GridItem(.adaptive(minimum: 60), spacing: 12)
+                        ], spacing: 12) {
+                            ForEach(colors) { dominantColor in
+                                Button {
+                                    onSelect(dominantColor.color, dominantColor.hexString)
+                                    isPresented = false
+                                } label: {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(dominantColor.color)
+                                        .frame(height: 60)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                        )
+                                }
                             }
                         }
+                        .padding(.horizontal)
                     }
-                } header: {
-                    Text("Select a color from your photo")
                 }
+                .padding(.vertical)
             }
             .navigationTitle("Pick Color from Photo")
 #if os(iOS)
@@ -156,7 +188,7 @@ struct ColorSelectionSheet: View {
             }
         }
 #if os(macOS)
-        .frame(minWidth: 400, minHeight: 400)
+        .frame(minWidth: 400, minHeight: 600)
 #endif
     }
 }

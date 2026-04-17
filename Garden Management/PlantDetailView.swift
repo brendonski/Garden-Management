@@ -343,6 +343,7 @@ struct EditPlantView: View {
     @State private var showingColorPicker = false
     @State private var showingPhotoSelector = false
     @State private var extractedColors: [DominantColor] = []
+    @State private var selectedPhotoForColorPicker: Data? = nil
     
     enum ColorPickerTarget {
         case primary, secondary
@@ -448,6 +449,7 @@ struct EditPlantView: View {
                     } else {
                         ColorSelectionSheet(
                             colors: extractedColors,
+                            photoData: selectedPhotoForColorPicker,
                             onSelect: { color, hexString in
                                 if colorPickerTarget == .primary {
                                     primaryColor = color
@@ -465,6 +467,7 @@ struct EditPlantView: View {
                     PhotoSelectionSheet(
                         photos: photoItems.map { $0.imageData },
                         onSelect: { selectedPhotoData in
+                            selectedPhotoForColorPicker = selectedPhotoData
                             Task { @MainActor in
                                 let colors = ColorExtractor.extractDominantColors(from: selectedPhotoData, count: 20)
                                 extractedColors = colors
@@ -653,6 +656,7 @@ struct EditPlantView: View {
                     showingColorPicker = true // Show immediately with loading state
                     if photoItems.count == 1 {
                         // Extract colors for single photo
+                        selectedPhotoForColorPicker = photoItems[0].imageData
                         Task { @MainActor in
                             let colors = ColorExtractor.extractDominantColors(from: photoItems[0].imageData, count: 20)
                             extractedColors = colors
