@@ -151,15 +151,22 @@ struct DetailRow: View {
 
 struct PhotoGalleryView: View {
     let photos: [PlantPhoto]
+    @State private var selectedPhoto: PlantPhoto?
     
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(photos) { photo in
                     photoView(photo: photo)
+                        .onTapGesture {
+                            selectedPhoto = photo
+                        }
                 }
             }
             .padding(.horizontal)
+        }
+        .fullScreenCover(item: $selectedPhoto) { photo in
+            FullScreenPhotoView(photo: photo, isPresented: $selectedPhoto)
         }
     }
     
@@ -169,6 +176,76 @@ struct PhotoGalleryView: View {
             .scaledToFill()
             .frame(width: 300, height: 300)
             .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct FullScreenPhotoView: View {
+    let photo: PlantPhoto
+    @Binding var isPresented: PlantPhoto?
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            Image(data: photo.imageData)
+                .resizable()
+                .scaledToFit()
+                .scaleEffect(scale)
+                .offset(offset)
+                .gesture(
+                    MagnificationGesture()
+                        .onChanged { value in
+                            scale = lastScale * value
+                        }
+                        .onEnded { _ in
+                            lastScale = scale
+                            // Reset if zoomed out too much
+                            if scale < 1.0 {
+                                withAnimation(.spring()) {
+                                    scale = 1.0
+                                    lastScale = 1.0
+                                    offset = .zero
+                                    lastOffset = .zero
+                                }
+                            }
+                        }
+                )
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            if scale > 1.0 {
+                                offset = CGSize(
+                                    width: lastOffset.width + value.translation.width,
+                                    height: lastOffset.height + value.translation.height
+                                )
+                            }
+                        }
+                        .onEnded { _ in
+                            lastOffset = offset
+                        }
+                )
+            
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        isPresented = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.white, .black.opacity(0.5))
+                            .shadow(radius: 2)
+                    }
+                    .padding()
+                }
+                Spacer()
+            }
+        }
+        .statusBar(hidden: true)
     }
 }
 
