@@ -49,7 +49,19 @@ actor ThumbnailCache {
         #if os(iOS)
         guard let image = UIImage(data: imageData) else { return nil }
         
-        let targetSize = CGSize(width: size, height: size)
+        // Calculate aspect-fit size to preserve aspect ratio
+        let imageSize = image.size
+        let aspectRatio = imageSize.width / imageSize.height
+        
+        let targetSize: CGSize
+        if aspectRatio > 1 {
+            // Landscape: width is limiting factor
+            targetSize = CGSize(width: size, height: size / aspectRatio)
+        } else {
+            // Portrait or square: height is limiting factor
+            targetSize = CGSize(width: size * aspectRatio, height: size)
+        }
+        
         let renderer = UIGraphicsImageRenderer(size: targetSize)
         
         let thumbnail = renderer.image { context in
@@ -61,7 +73,19 @@ actor ThumbnailCache {
         #elseif os(macOS)
         guard let image = NSImage(data: imageData) else { return nil }
         
-        let targetSize = CGSize(width: size, height: size)
+        // Calculate aspect-fit size to preserve aspect ratio
+        let imageSize = image.size
+        let aspectRatio = imageSize.width / imageSize.height
+        
+        let targetSize: CGSize
+        if aspectRatio > 1 {
+            // Landscape: width is limiting factor
+            targetSize = CGSize(width: size, height: size / aspectRatio)
+        } else {
+            // Portrait or square: height is limiting factor
+            targetSize = CGSize(width: size * aspectRatio, height: size)
+        }
+        
         let thumbnail = NSImage(size: targetSize)
         
         thumbnail.lockFocus()
@@ -100,7 +124,7 @@ struct ThumbnailImageView: View {
             if let thumbnailData = thumbnailData {
                 Image(data: thumbnailData)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
             } else if isLoading {
                 Rectangle()
                     .fill(Color.gray.opacity(0.2))
