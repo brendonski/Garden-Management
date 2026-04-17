@@ -6,7 +6,9 @@
 //
 
 import Foundation
+import SwiftUI
 import Photos
+import PhotosUI
 
 #if os(iOS)
 import UIKit
@@ -20,6 +22,21 @@ struct PhotoAssetInfo {
 }
 
 class PhotoLibraryHelper {
+    
+    /// Get asset identifier from PhotosPickerItem
+    /// If the item is from the photo library, this retrieves the existing asset identifier
+    /// Returns nil if the asset cannot be found
+    @MainActor
+    static func getAssetIdentifier(from item: PhotosPickerItem) async -> String? {
+        // PhotosPickerItem.itemIdentifier is not a PHAsset localIdentifier
+        // We need to load the asset and match it
+        guard let imageData = try? await item.loadTransferable(type: Data.self) else {
+            return nil
+        }
+        
+        // Try to find the existing asset in the library
+        return await findExistingAsset(for: imageData)
+    }
     
     /// Find an existing asset in the library that matches the given image data
     /// Returns the asset identifier if found, nil otherwise

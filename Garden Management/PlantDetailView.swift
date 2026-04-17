@@ -503,8 +503,8 @@ struct EditPlantView: View {
             for item in items {
                 // Load image data
                 if let data = try? await item.loadTransferable(type: Data.self) {
-                    // Get or create asset identifier (avoids duplicates)
-                    let assetId = await PhotoLibraryHelper.getOrCreateAssetIdentifier(for: data)
+                    // Try to get existing asset identifier (don't save to library)
+                    let assetId = await PhotoLibraryHelper.getAssetIdentifier(from: item)
                     photoItems.append(PhotoItem(imageData: data, assetIdentifier: assetId))
                 }
             }
