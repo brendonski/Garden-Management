@@ -94,10 +94,27 @@ class ColorExtractor {
         
         // Filter out very dark or very desaturated colors (likely background)
         let filteredColors = colorStats.values.filter { colorData in
-            // Exclude very dark colors (brightness < 40)
-            guard colorData.brightness > 40 else { return false }
-            // Exclude very desaturated/gray colors (saturation < 0.15)
-            guard colorData.saturation > 0.15 else { return false }
+            let r = colorData.r
+            let g = colorData.g
+            let b = colorData.b
+            let brightness = colorData.brightness
+            let saturation = colorData.saturation
+            
+            // Exclude very dark colors / blacks (brightness < 40)
+            guard brightness > 40 else { return false }
+            
+            // Exclude very desaturated/gray colors (saturation < 0.2)
+            guard saturation > 0.2 else { return false }
+            
+            // Exclude greens: green channel dominant over red and blue
+            let isGreen = g > r && g > b && Double(g - max(r, b)) > 30
+            guard !isGreen else { return false }
+            
+            // Exclude browns: low brightness, low saturation, red/orange-ish
+            // Browns typically have red >= green >= blue with low brightness and saturation
+            let isBrown = brightness < 120 && saturation < 0.4 && r >= g && g >= b && r > b
+            guard !isBrown else { return false }
+            
             return true
         }
         
