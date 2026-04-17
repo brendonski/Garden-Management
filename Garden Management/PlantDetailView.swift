@@ -465,10 +465,8 @@ struct EditPlantView: View {
                     PhotoSelectionSheet(
                         photos: photoItems.map { $0.imageData },
                         onSelect: { selectedPhotoData in
-                            Task {
-                                let colors = await Task.detached(priority: .userInitiated) {
-                                    ColorExtractor.extractDominantColors(from: selectedPhotoData, count: 20)
-                                }.value
+                            Task { @MainActor in
+                                let colors = ColorExtractor.extractDominantColors(from: selectedPhotoData, count: 20)
                                 extractedColors = colors
                                 showingColorPicker = true
                             }
@@ -652,15 +650,15 @@ struct EditPlantView: View {
                 Button {
                     colorPickerTarget = .primary
                     extractedColors = [] // Reset colors
-                    showingColorPicker = true // Show sheet immediately with loading state
+                    showingColorPicker = true // Show immediately with loading state
                     if photoItems.count == 1 {
-                        Task {
-                            let colors = await Task.detached(priority: .userInitiated) {
-                                ColorExtractor.extractDominantColors(from: photoItems[0].imageData, count: 20)
-                            }.value
+                        // Extract colors for single photo
+                        Task { @MainActor in
+                            let colors = ColorExtractor.extractDominantColors(from: photoItems[0].imageData, count: 20)
                             extractedColors = colors
                         }
                     } else {
+                        // For multiple photos, close picker and show selector instead
                         showingColorPicker = false
                         showingPhotoSelector = true
                     }
