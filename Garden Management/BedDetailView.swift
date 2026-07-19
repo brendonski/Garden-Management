@@ -23,7 +23,7 @@ struct BedDetailView: View {
                 ContentUnavailableView(
                     "Bed No Longer Exists",
                     systemImage: "exclamationmark.triangle",
-                    description: Text("This bed has been deleted or is no longer available")
+                    description: Text("This bed was deleted or is no longer available")
                 )
                 .onAppear {
                     dismiss()
